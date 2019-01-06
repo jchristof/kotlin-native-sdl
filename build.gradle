@@ -1,0 +1,69 @@
+plugins {
+    id 'kotlin-multiplatform' version '1.3.11'
+}
+
+repositories {
+    mavenCentral()
+}
+
+kotlin {
+    targets {
+        // For ARM, preset should be changed to presets.iosArm32 or presets.iosArm64
+        // For Linux, preset should be changed to e.g. presets.linuxX64
+        // For MacOS, preset should be changed to e.g. presets.macosX64
+        fromPreset(presets.linuxX64, 'HelloWorld')
+
+        configure([HelloWorld]) {
+            // Comment to generate Kotlin/Native library (KLIB) instead of executable file:
+            compilations.main.outputKinds 'EXECUTABLE'
+            // Change to specify fully qualified name of your application's entry point:
+            compilations.main.entryPoint 'sample.helloworld.main'
+            compilations.main.linkerOpts '-L/usr/lib64', '-L/usr/lib/x86_64-linux-gnu', '-lSDL2'
+            compilations.main.cinterops {
+            sdl {
+                    includeDirs '/usr/include/SDL2'
+                }
+            }
+        }
+    }
+
+    sourceSets {
+        HelloWorldMain {
+        }
+        HelloWorldTest {
+        }
+    }
+}
+
+task runProgram {
+    def buildType = 'RELEASE' // Change to 'DEBUG' to run application with debug symbols.
+    dependsOn kotlin.targets.HelloWorld.compilations.main.linkTaskName('EXECUTABLE', buildType)
+    doLast {
+        exec {
+            executable kotlin.targets.HelloWorld.compilations.main.getBinary('EXECUTABLE', buildType)
+        }
+    }
+}
+
+afterEvaluate {
+    kotlin.targets.HelloWorld.compilations.main { mainCompilation ->
+        def linkTasks = ['RELEASE', 'DEBUG']
+                .collect { mainCompilation.findLinkTask('EXECUTABLE', it) }
+                .findAll { it != null }
+
+        def compileWindowsResourcesTask = tasks.findByName('compileWindowsResources')
+
+        linkTasks.each { task ->
+            if (compileWindowsResourcesTask != null)
+                task.dependsOn compileWindowsResourcesTask
+
+            task.doLast {
+                copy {
+                    from kotlin.sourceSets.HelloWorldMain.resources
+                    into task.outputFile.get().parentFile
+                    exclude '*.rc'
+                }
+            }
+        }
+    }
+}
